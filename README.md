@@ -30,11 +30,11 @@
 npm install
 
 # 安装前端依赖
-cd client
+cd queueSystem-client
 npm install
 
 # 安装后端依赖
-cd ../server
+cd ../queueSystem-server
 npm install
 ```
 
@@ -60,7 +60,7 @@ npm run build
 ```
 
 构建后的文件位于：
-- 前端构建文件：`server/public/`
+- 前端构建文件：`queueSystem-server/public/`
 - 后端打包文件：`dist/queue-system.exe`
 
 ### 部署

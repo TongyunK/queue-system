@@ -7,12 +7,12 @@ console.log('开始构建排队叫号系统...');
 
 // 1. 构建前端
 console.log('构建前端应用...');
-execSync('cd client && npm run build', { stdio: 'inherit' });
+execSync('cd queueSystem-client && npm run build', { stdio: 'inherit' });
 
 // 2. 准备服务器目录
-const serverDir = path.join(__dirname, '../server');
+const serverDir = path.join(__dirname, '../queueSystem-server');
 const publicDir = path.join(serverDir, 'public');
-const clientDistDir = path.join(__dirname, '../client/dist');
+const clientDistDir = path.join(__dirname, '../queueSystem-client/dist');
 
 // 清空旧的public目录
 if (fs.existsSync(publicDir)) {
@@ -30,7 +30,7 @@ try {
   fs.mkdirSync(path.join(__dirname, '../dist'), { recursive: true });
   
   // 使用pkg打包
-  execSync('npx pkg server/index.js --targets node16-win-x64 --output dist/queue-system', { 
+  execSync('npx pkg queueSystem-server/index.js --targets node16-win-x64 --output dist/queue-system', { 
     stdio: 'inherit',
     cwd: path.join(__dirname, '..')
   });
