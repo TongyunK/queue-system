@@ -11,10 +11,10 @@ export const businessTypeService = {
   getAll: () => api.get('/business-types')
 };
 
-// 票号服务已移除
+// 票号服务
 export const ticketService = {
-  // 提供空方法以便前端组件在迁移期间使用
-  create: () => Promise.reject({ response: { data: { message: '此功能已不可用', code: 'SERVICE_REMOVED' } } }),
+  create: (businessTypeId) => api.post('/tickets', { businessTypeId }),
+  getWaitingCount: (businessTypeId) => api.get(`/tickets/waiting/${businessTypeId}`),
   getCurrent: () => Promise.resolve({ data: [] }),
   getWaitingCounts: () => Promise.resolve({ data: [] }),
   updateStatus: () => Promise.reject({ response: { data: { message: '此功能已不可用', code: 'SERVICE_REMOVED' } } })

@@ -1,54 +1,32 @@
 <template>
   <div class="ticket-container">
     <div class="content-wrapper">
-      <div class="header">
-        <h1>請選擇業務類型</h1>
-        <h2>Please Select Service Type</h2>
-      </div>
-      
-      <!-- <div class="date-time-display">
-        <div class="current-date">{{ currentDateFormatted }}</div>
-        <div class="current-time">{{ currentTimeFormatted }}</div>
-      </div> -->
-      
-      <div class="business-type-grid">
-        <div 
-          v-for="type in businessTypesWithEnglish" 
-          :key="type.id" 
-          class="business-type-btn" 
-          :class="{ 'selected': selectedType && selectedType.id === type.id }"
-          @click="selectBusinessType(type)"
-        >
-          <div class="btn-icon">{{ type.code }}</div>
-          <div class="btn-text">
-            <div class="chinese-text">{{ type.name }}</div>
-            <div class="english-text">{{ type.englishName }}</div>
-          </div>
+      <!-- 首页视图 -->
+      <div v-if="currentView === 'home'" class="home-view">
+        <div class="image-section">
+          <img :src="bannerImage" alt="Banner" class="banner-image" />
+        </div>
+        <!-- 添加日期时间显示 -->
+        <div class="date-time-display">
+          <div class="current-date">{{ currentDateFormatted }}</div>
+          <div class="current-time">{{ currentTimeFormatted }}</div>
+        </div>
+        <div class="action-section">
+          <button class="select-service-btn" @click="showBusinessTypes">
+            <div class="chinese-text">選擇辦理業務</div>
+            <div class="english-text">Select Service</div>
+          </button>
         </div>
       </div>
 
-      <div class="get-ticket-section">
-        <button 
-          class="get-ticket-btn" 
-          :class="{ 'disabled': !selectedType || ticketInfo }"
-          @click="getTicket"
-        >
-          <div class="chinese-text">取號</div>
-          <div class="english-text">Get Ticket</div>
-        </button>
-      </div>
-
-      <div v-if="ticketInfo" class="ticket-info">
-        <div class="ticket-number">{{ ticketInfo.ticket_number }}</div>
-        <div class="ticket-message">
-          <div class="chinese-text">您的號碼已取得</div>
-          <div class="english-text">Your ticket has been issued</div>
-        </div>
-        <div class="waiting-info">
-          <div class="chinese-text">前面等待: {{ waitingCount }} 位</div>
-          <div class="english-text">Waiting: {{ waitingCount }}</div>
-        </div>
-      </div>
+      <!-- 业务类型选择视图（使用独立组件） -->
+      <BusinessTypeSelector 
+        v-else-if="currentView === 'business-types'"
+        :businessTypes="businessTypesWithEnglish"
+        @back="returnToHome"
+        @getTicket="handleGetTicket"
+        ref="businessTypeSelectorRef"
+      />
     </div>
   </div>
 
@@ -91,16 +69,17 @@
 <script setup>
 import { ref, onMounted, computed, onUnmounted } from 'vue';
 import { businessTypeService, ticketService } from '@/api';
+import BusinessTypeSelector from './BusinessTypeSelector.vue';
 
 const businessTypes = ref([]);
-const selectedType = ref(null);
-const ticketInfo = ref(null);
-const waitingCount = ref(0);
 const currentDate = ref(new Date());
 const timerInterval = ref(null);
 const isLoading = ref(false);
 const showErrorDialog = ref(false);
 const errorType = ref('apiError'); // 'apiError' 或 'noSelection'
+const currentView = ref('home'); // 'home' 或 'business-types'
+const bannerImage = ref('https://fastly.picsum.photos/id/26/800/600.jpg?hmac=Gb1_im8FBAsRjmjz4Ggb6JS6Kcib1ZGYSGJNrjW2RmA');
+const businessTypeSelectorRef = ref(null);
 
 // 格式化日期：年月日 星期几(英文)
 const currentDateFormatted = computed(() => {
@@ -132,12 +111,6 @@ const businessTypesWithEnglish = computed(() => {
   }));
 });
 
-// 加载等待队列数量
-const loadWaitingCount = async () => {
-  // 票号功能已移除，直接返回0
-  waitingCount.value = 0;
-};
-
 onMounted(async () => {
   try {
     const response = await businessTypeService.getAll();
@@ -159,31 +132,38 @@ onUnmounted(() => {
   }
 });
 
-const selectBusinessType = (type) => {
-  // 选择业务类型后的处理逻辑
-  selectedType.value = type;
-  ticketInfo.value = null; // 清除之前的票号信息
-  console.log('选择了业务类型:', type);
+// 切换到业务类型选择页面
+const showBusinessTypes = () => {
+  currentView.value = 'business-types';
 };
 
-// 取票逻辑
-const getTicket = async () => {
-  // 如果未选择业务类型，显示提示
-  if (!selectedType.value) {
-    showErrorDialog.value = true;
-    errorType.value = 'noSelection';
-    return;
-  }
-  
-  // 如果已经有票号或正在加载中，不执行操作
-  if (ticketInfo.value || isLoading.value) return;
+// 返回首页
+const returnToHome = () => {
+  currentView.value = 'home';
+};
+
+// 处理子组件的取票事件
+const handleGetTicket = async (selectedType) => {
+  // 如果已经在加载中，不执行操作
+  if (isLoading.value) return;
   
   isLoading.value = true;
   try {
-    // 票号功能已移除，显示功能不可用的错误消息
-    console.error('票号功能已移除');
+    // 调用API获取票号
+    const response = await ticketService.create(selectedType.id);
+    const ticketInfo = response.data;
+    
+    // 更新子组件中的票号信息和等待人数
+    if (businessTypeSelectorRef.value) {
+      businessTypeSelectorRef.value.setTicketInfo({
+        ticket_number: ticketInfo.ticket_number
+      });
+      businessTypeSelectorRef.value.setWaitingCount(ticketInfo.waiting_count);
+    }
+  } catch (error) {
+    console.error('取票失败:', error);
     showErrorDialog.value = true;
-    errorType.value = 'serviceRemoved';
+    errorType.value = 'apiError';
   } finally {
     isLoading.value = false;
   }
@@ -210,13 +190,14 @@ const closeErrorDialog = () => {
   overflow: hidden;
 }
 
+/* 主容器设置为纵向显示 */
 .ticket-container {
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   height: 100vh; /* 使用固定高度而非最小高度 */
   max-height: 100vh; /* 限制最大高度 */
   background-color: #f5f7fa;
@@ -225,273 +206,130 @@ const closeErrorDialog = () => {
   overflow: hidden; /* 防止内容溢出 */
 }
 
-/* 内容包装器，实现垂直居中 */
+/* 内容包装器，实现垂直排列 */
 .content-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2vh 3vw;
+  justify-content: flex-start;
+  padding: 0;
   height: 100%; /* 使用100%高度填充容器 */
   width: 100%;
   box-sizing: border-box;
 }
 
-.header {
-  text-align: center;
-  margin-bottom: 2vh; /* 减小底部间距 */
+/* 首页样式 */
+.home-view {
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  height: 100%;
 }
 
+/* 图片区域样式 - 占据更多空间 */
+.image-section {
+  flex: 2; /* 从1增加到2，使图片区域占据更多空间 */
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background-color: #000;
+}
+
+.banner-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 确保图片覆盖整个区域且保持比例 */
+}
+
+/* 日期时间显示区域 */
 .date-time-display {
   text-align: center;
-  margin-bottom: 2vh; /* 减小底部间距 */
-  padding: 1vh 0; /* 减小内部间距 */
-  background-color: rgba(64, 158, 255, 0.1);
-  border-radius: 8px;
-  width: 80%;
-  max-width: 600px;
+  padding: 1.5vh 0;
+  background-color: rgba(0, 0, 0, 0.6); /* 半透明黑色背景 */
+  color: white;
+  width: 100%;
+  z-index: 10;
+  position: relative;
 }
 
 .current-date {
-  font-size: 20px;
-  color: #606266;
+  font-size: calc(var(--base-font-size) * 1.2);
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 5px;
 }
 
 .current-time {
-  font-size: 32px;
+  font-size: calc(var(--base-font-size) * 1.8);
   font-weight: 700;
-  color: #409EFF;
+  color: white;
 }
 
-.header h1 {
-  font-size: 36px; /* 调整为48px */
-  color: #303133;
-  margin-bottom: 0.3rem; /* 减小标题之间的间距 */
-  margin-top: 0.2rem; /* 确保顶部有少量间距 */
-  font-weight: 600; /* 增加字重 */
-}
-
-.header h2 {
-  font-size: calc(var(--base-font-size) * 1);
-  color: #606266;
-  font-weight: normal;
-  margin-bottom: 0.3rem; /* 减小与下方内容的间距 */
-}
-
-.business-type-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2vw;
-  width: 90%;
-  max-width: 1200px;
-  margin: 0; /* 移除所有边距 */
-  padding: 0;
-  max-height: calc(100vh - 120px); /* 确保不超出视口高度 */
-  overflow-y: auto; /* 如果内容过多，允许滚动 */
-}
-
-.business-type-btn {
+/* 操作区域样式 - 占据下半部分 */
+.action-section {
+  flex: 1;
   display: flex;
   align-items: center;
-  background-color: #ffffff;
-  border-radius: 10px;
-  padding: 2.5vh 2vw;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  cursor: pointer;
-  transition: all 0.3s;
-  border-left: 5px solid #409EFF;
-  margin-bottom: 2vh;
-}
-
-.business-type-btn:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-}
-
-.btn-icon {
-  font-size: calc(var(--base-font-size) * 1.8); /* 增大图标大小 */
-  color: #409EFF;
-  margin-right: 1vw;
-  flex-shrink: 0;
-}
-
-.btn-text {
-  flex: 1;
-}
-
-.chinese-text {
-  /* 使用CSS变量，添加!important确保优先级 */
-  font-size: calc(var(--base-font-size) * 1) !important; 
-  color: #303133;
-  font-weight: bold;
-  margin-bottom: 0.7rem; /* 增加中英文间距 */
-  line-height: 1.3; /* 改善行高 */
-}
-
-.english-text {
-  /* 使用CSS变量，添加!important确保优先级 */
-  font-size: calc(var(--base-font-size) * 1) !important; 
-  color: #505050; /* 加深颜色提高可读性 */
-  line-height: 1.2; /* 改善行高 */
-}
-
-/* 选中状态 */
-.business-type-btn.selected {
-  background-color: #e6f1fc;
-  border-left: 5px solid #1989fa;
-  transform: translateY(-3px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-}
-
-/* Footer已移除 */
-
-/* 响应式布局 - 大屏幕 */
-@media (min-width: 1400px) {
-  :root {
-    --base-font-size: 24px;  /* 大屏幕上使用更大字体 */
-  }
-  
-  .business-type-grid {
-    max-width: 1400px;
-  }
-}
-
-/* 响应式布局 - 平板电脑 */
-@media (max-width: 1024px) {
-  :root {
-    --base-font-size: 18px;  /* 增大平板设备字体 */
-  }
-  
-  .business-type-grid {
-    width: 95%;
-    gap: 15px;
-  }
-  
-  .business-type-btn {
-    padding: 20px 15px;
-  }
-}
-
-/* 响应式布局 - 大型手机 */
-@media (max-width: 768px) {
-  :root {
-    --base-font-size: 17px;  /* 增大手机上的字体 */
-  }
-  
-  .business-type-grid {
-    grid-template-columns: 1fr;
-    width: 90%;
-  }
-  
-  .header h1 {
-    font-size: 28px; /* 调整为40px */
-  }
-  
-  .header h2 {
-    font-size: calc(var(--base-font-size) * 1.4);
-  }
-  
-  .business-type-btn {
-    padding: 15px;
-  }
-}
-
-/* 取号按钮区域 */
-.get-ticket-section {
-  margin-top: 3vh;
-  display: flex;
   justify-content: center;
   width: 100%;
+  background-color: #fff;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
-.get-ticket-btn {
+/* 选择业务按钮样式 */
+.select-service-btn {
   background-color: #409EFF;
   color: white;
   border: none;
-  border-radius: 10px;
-  padding: 1.5vh 10vw; /* 减小垂直内边距从2vh到1.5vh */
+  border-radius: 15px;
+  padding: 3vh 6vw;
   cursor: pointer;
   transition: all 0.3s;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
+  box-shadow: 0 4px 15px rgba(64, 158, 255, 0.5);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  font-size: calc(var(--base-font-size) * 1.5);
 }
 
-.get-ticket-btn:hover {
+.select-service-btn:hover {
   background-color: #66b1ff;
-  transform: translateY(-3px);
-  box-shadow: 0 6px 15px rgba(64, 158, 255, 0.5);
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(64, 158, 255, 0.6);
 }
 
-.get-ticket-btn:active {
+.select-service-btn:active {
   transform: translateY(0);
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.5);
 }
 
-.get-ticket-btn.disabled {
-  background-color: #a0cfff;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.get-ticket-btn.disabled:hover {
-  background-color: #a0cfff;
-  transform: none;
-  box-shadow: none;
-}
-
-.get-ticket-btn .chinese-text {
-  margin-bottom: 0.2rem; /* 减小底部边距 */
-  font-size: calc(var(--base-font-size) * 1.3) !important; /* 减小字体大小 */
+.select-service-btn .chinese-text {
+  margin-bottom: 0.5rem;
+  font-size: calc(var(--base-font-size) * 1.8) !important;
   color: white;
 }
 
-.get-ticket-btn .english-text {
-  font-size: calc(var(--base-font-size) * 0.9) !important; /* 减小字体大小 */
+.select-service-btn .english-text {
+  font-size: calc(var(--base-font-size) * 1.2) !important;
   color: rgba(255, 255, 255, 0.9);
 }
 
-/* 票号信息显示 */
-.ticket-info {
-  margin-top: 4vh;
-  background-color: #f0f9eb;
-  border: 1px solid #e1f3d8;
-  border-radius: 10px;
-  padding: 3vh 3vw;
-  text-align: center;
-  width: 80%;
-  max-width: 500px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-}
-
-.ticket-number {
-  font-size: calc(var(--base-font-size) * 4);
-  color: #67c23a;
+/* 首页组件的文本样式 */
+.chinese-text {
+  font-size: calc(var(--base-font-size) * 1) !important;
+  color: #303133;
   font-weight: bold;
-  margin-bottom: 2vh;
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
 }
 
-.ticket-message {
-  margin-bottom: 2vh;
-}
-
-.ticket-message .chinese-text {
-  color: #67c23a;
-}
-
-.ticket-message .english-text {
-  color: #85ce61;
-}
-
-.waiting-info {
-  margin-top: 1vh;
-  padding-top: 1vh;
-  border-top: 1px dashed #c0e3b2;
+.english-text {
+  font-size: calc(var(--base-font-size) * 0.9) !important;
+  color: #505050;
+  line-height: 1.2;
 }
 
 /* 自定义弹窗样式 */
@@ -602,10 +440,70 @@ const closeErrorDialog = () => {
   color: rgba(255, 255, 255, 0.9);
 }
 
+/* 响应式布局 - 大屏幕 */
+@media (min-width: 1400px) {
+  :root {
+    --base-font-size: 24px;  /* 大屏幕上使用更大字体 */
+  }
+  
+  .business-type-grid {
+    max-width: 1000px;
+  }
+}
+
+/* 响应式布局 - 平板电脑 */
+@media (max-width: 1024px) {
+  :root {
+    --base-font-size: 18px;
+  }
+  
+  .business-type-grid {
+    width: 95%;
+    gap: 15px;
+  }
+  
+  .business-type-btn {
+    padding: 20px 15px;
+  }
+}
+
+/* 响应式布局 - 大型手机 */
+@media (max-width: 768px) {
+  :root {
+    --base-font-size: 17px;
+  }
+  
+  .business-type-grid {
+    grid-template-columns: 1fr;
+    width: 90%;
+  }
+  
+  .header h1 {
+    font-size: calc(var(--base-font-size) * 1.6);
+  }
+  
+  .header h2 {
+    font-size: calc(var(--base-font-size) * 1.2);
+  }
+  
+  .business-type-btn {
+    padding: 15px;
+  }
+  
+  .get-ticket-section {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .get-ticket-btn, .back-btn {
+    width: 60%;
+  }
+}
+
 /* 响应式布局 - 小型手机 */
 @media (max-width: 480px) {
   :root {
-    --base-font-size: 14px;  /* 增大小屏幕手机字体 */
+    --base-font-size: 14px;
   }
   
   .header {
@@ -613,11 +511,11 @@ const closeErrorDialog = () => {
   }
   
   .header h1 {
-    font-size: 18px; /* 调整为32px */
+    font-size: calc(var(--base-font-size) * 1.4);
   }
   
   .header h2 {
-    font-size: calc(var(--base-font-size) * 1.4);
+    font-size: calc(var(--base-font-size) * 1.1);
   }
   
   .business-type-grid {
@@ -647,6 +545,18 @@ const closeErrorDialog = () => {
     width: 50px;
     height: 50px;
     font-size: 30px;
+  }
+  
+  .select-service-btn {
+    padding: 2vh 8vw;
+  }
+  
+  .select-service-btn .chinese-text {
+    font-size: calc(var(--base-font-size) * 1.5) !important;
+  }
+  
+  .select-service-btn .english-text {
+    font-size: calc(var(--base-font-size) * 1) !important;
   }
 }
 </style>

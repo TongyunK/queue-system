@@ -4,6 +4,7 @@ const counterController = require('../controllers/counterController');
 const businessTypeController = require('../controllers/businessTypeController');
 const adminRoutes = require('./admin');
 const adminSystemRoutes = require('./adminRoutes');
+const ticketRoutes = require('./ticket');
 
 // API文档路由 - 显示所有可用的API端点
 router.get('/', (req, res) => {
@@ -11,7 +12,8 @@ router.get('/', (req, res) => {
     { method: 'GET', path: '/api/business-types', description: '获取所有业务类型' },
     { method: 'POST', path: '/api/business-types', description: '创建新业务类型' },
     { method: 'PUT', path: '/api/business-types/:id', description: '更新业务类型' },
-    // 票号相关API已移除
+    { method: 'POST', path: '/api/tickets', description: '取票' },
+    { method: 'GET', path: '/api/tickets/waiting/:businessTypeId', description: '获取等待人数' },
     { method: 'GET', path: '/api/counters', description: '获取所有窗口信息' },
     { method: 'PUT', path: '/api/counters/:id', description: '更新窗口信息' },
     { method: 'POST', path: '/api/counters/:id/end-service', description: '结束当前服务' },
@@ -82,7 +84,8 @@ router.get('/business-types', businessTypeController.getAllBusinessTypes);
 router.post('/business-types', businessTypeController.createBusinessType);
 router.put('/business-types/:id', businessTypeController.updateBusinessType);
 
-// 票号相关路由已移除
+// 使用票号相关路由
+router.use('/', ticketRoutes);
 
 // 窗口路由
 router.get('/counters', counterController.getAllCounters);
