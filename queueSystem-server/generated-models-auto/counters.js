@@ -19,6 +19,10 @@ module.exports = function(sequelize, DataTypes) {
     ip_address: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    current_ticket_number: {
+      type: DataTypes.STRING(50),
+      allowNull: true
     }
   }, {
     sequelize,
