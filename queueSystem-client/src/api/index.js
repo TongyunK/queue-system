@@ -14,7 +14,9 @@ export const businessTypeService = {
 // 票号服务
 export const ticketService = {
   create: (businessTypeId) => api.post('/tickets', { businessTypeId }),
+  callNext: (businessTypeId, counterNumber) => api.post('/tickets/call-next', { businessTypeId, counterNumber }),
   getWaitingCount: (businessTypeId) => api.get(`/tickets/waiting/${businessTypeId}`),
+  getAllWaitingCounts: () => api.get('/tickets/waiting-counts'),
   getCurrent: () => Promise.resolve({ data: [] }),
   getWaitingCounts: () => Promise.resolve({ data: [] }),
   updateStatus: () => Promise.reject({ response: { data: { message: '此功能已不可用', code: 'SERVICE_REMOVED' } } })
@@ -22,6 +24,15 @@ export const ticketService = {
 
 export const counterService = {
   getAll: () => api.get('/counters'),
+  getByIP: (ip) => api.get(`/counters/by-ip/${ip}`),
+  getByNumber: (counterNumber) => api.get(`/counters/by-number/${counterNumber}`),
+  getByIPOrNumber: (ip, counterNumber) => {
+    const params = new URLSearchParams();
+    if (ip) params.append('ip', ip);
+    if (counterNumber) params.append('counterNumber', counterNumber);
+    return api.get(`/counters/match?${params.toString()}`);
+  },
+  getLastServiceNumbers: (counterNumber) => api.get(`/counters/${counterNumber}/last-service-numbers`),
   update: (id, data) => api.put(`/counters/${id}`, data),
   // 叫号功能已移除
   callNext: () => Promise.reject({ response: { data: { message: '此功能已不可用', code: 'SERVICE_REMOVED' } } }),

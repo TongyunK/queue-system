@@ -17,7 +17,7 @@ const createTicketSequencesTable = async () => {
           "date" DATE NOT NULL,
           "business_code" VARCHAR(10),
           "current_total_number" INTEGER DEFAULT 0,
-          "current_passed _number" INTEGER DEFAULT 0,
+          "current_passed_number" INTEGER DEFAULT 0,
           "created_at" DATETIME NOT NULL,
           "updated_at" DATETIME NOT NULL,
           FOREIGN KEY ("business_type_id") REFERENCES "business_types" ("id"),

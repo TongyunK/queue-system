@@ -1,5 +1,6 @@
-const { ticketSequences, businessTypes, sequelize } = require('../models');
+const { ticketSequences, businessTypes, counters: Counter, counterBusinessLastTicket: CounterBusinessLastTicket, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const { getIO } = require('../websocket');
 
 // 获取当前日期，格式为 YYYY-MM-DD
 const getTodayDate = () => {
@@ -35,7 +36,7 @@ const createTicket = async (businessTypeId) => {
         date: today,
         business_code: businessType.code,
         current_total_number: 0,
-        'current_passed _number': 0 // 注意这里的字段名有空格，因为数据库模型中的定义有空格
+        current_passed_number: 0
       }, { transaction: t });
     }
 
@@ -52,7 +53,7 @@ const createTicket = async (businessTypeId) => {
     const ticketNumber = `${businessType.prefix}${String(ticketSequence.current_total_number).padStart(3, '0')}`;
     
     // 计算等待人数（减去1，因为当前用户不算在等待人数中）
-    const waitingCount = Math.max(0, ticketSequence.current_total_number - ticketSequence['current_passed _number'] - 1);
+    const waitingCount = Math.max(0, ticketSequence.current_total_number - ticketSequence.current_passed_number - 1);
 
     return {
       ticket_number: ticketNumber,
@@ -78,10 +79,153 @@ const getWaitingCount = async (businessTypeId) => {
     return 0; // 如果今天还没有取票记录，则等待人数为0
   }
 
-  return Math.max(0, ticketSequence.current_total_number - ticketSequence['current_passed _number'] - 1);
+  // 计算等待人数：current_total_number - current_passed_number
+  return Math.max(0, ticketSequence.current_total_number - ticketSequence.current_passed_number);
+};
+
+// 批量获取所有业务类型的等待人数
+const getAllWaitingCounts = async () => {
+  const today = getTodayDate();
+  
+  // 获取所有业务类型
+  const allBusinessTypes = await businessTypes.findAll();
+  
+  // 获取今天所有的票号序列
+  const allTicketSequences = await ticketSequences.findAll({
+    where: {
+      date: today
+    }
+  });
+  
+  // 构建等待人数映射对象
+  const waitingCounts = {};
+  
+  // 遍历所有业务类型，计算等待人数
+  for (const businessType of allBusinessTypes) {
+    const ticketSequence = allTicketSequences.find(
+      seq => seq.business_type_id === businessType.id
+    );
+    
+    if (ticketSequence) {
+      // 计算等待人数：current_total_number - current_passed_number
+      waitingCounts[businessType.id] = Math.max(
+        0,
+        ticketSequence.current_total_number - ticketSequence.current_passed_number
+      );
+    } else {
+      // 如果今天还没有取票记录，则等待人数为0
+      waitingCounts[businessType.id] = 0;
+    }
+  }
+  
+  return waitingCounts;
+};
+
+// 叫号功能：处理下一个票号
+const callNext = async (businessTypeId, counterNumber) => {
+  const today = getTodayDate();
+
+  return sequelize.transaction(async (t) => {
+    // 1. 查找今天的票号序列并锁定
+    let ticketSequence = await ticketSequences.findOne({
+      where: {
+        business_type_id: businessTypeId,
+        date: today
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
+    // 如果今天没有记录，则创建一条新记录
+    if (!ticketSequence) {
+      const businessType = await businessTypes.findByPk(businessTypeId, { transaction: t });
+      if (!businessType) {
+        throw new Error('业务类型不存在');
+      }
+
+      ticketSequence = await ticketSequences.create({
+        business_type_id: businessTypeId,
+        date: today,
+        business_code: businessType.code,
+        current_total_number: 0,
+        current_passed_number: 0
+      }, { transaction: t });
+    }
+
+    // 2. current_passed_number 自增1
+    await ticketSequence.increment('current_passed_number', { transaction: t });
+    await ticketSequence.reload({ transaction: t });
+
+    // 3. 获取业务类型信息
+    const businessType = await businessTypes.findByPk(businessTypeId, { transaction: t });
+    if (!businessType) {
+      throw new Error('业务类型不存在');
+    }
+
+    // 4. 生成新的票号：业务code + 三位的current_passed_number
+    const newTicketNumber = `${businessType.code}${String(ticketSequence.current_passed_number).padStart(3, '0')}`;
+
+    // 5. 根据柜台号查找柜台
+    const counter = await Counter.findOne({
+      where: { counter_number: counterNumber },
+      transaction: t
+    });
+
+    if (!counter) {
+      throw new Error('柜台不存在');
+    }
+
+    // 6. 更新counters表的current_ticket_number
+    await counter.update({
+      current_ticket_number: newTicketNumber
+    }, { transaction: t });
+
+    // 7. 更新或创建counter_business_last_ticket表的记录
+    let lastTicket = await CounterBusinessLastTicket.findOne({
+      where: {
+        counter_id: counter.id,
+        business_type_id: businessTypeId
+      },
+      transaction: t
+    });
+
+    if (lastTicket) {
+      // 更新现有记录
+      await lastTicket.update({
+        last_ticket_no: newTicketNumber
+      }, { transaction: t });
+    } else {
+      // 创建新记录
+      await CounterBusinessLastTicket.create({
+        counter_id: counter.id,
+        business_type_id: businessTypeId,
+        last_ticket_no: newTicketNumber
+      }, { transaction: t });
+    }
+
+    // 8. 通过WebSocket广播叫号事件，通知所有客户端刷新数据
+    const io = getIO();
+    if (io) {
+      io.emit('ticket:nextCalled', {
+        businessTypeId,
+        counterNumber,
+        ticketNumber: newTicketNumber,
+        currentPassedNumber: ticketSequence.current_passed_number,
+        waitingCount: Math.max(0, ticketSequence.current_total_number - ticketSequence.current_passed_number)
+      });
+    }
+
+    return {
+      ticket_number: newTicketNumber,
+      current_passed_number: ticketSequence.current_passed_number,
+      waiting_count: Math.max(0, ticketSequence.current_total_number - ticketSequence.current_passed_number)
+    };
+  });
 };
 
 module.exports = {
   createTicket,
-  getWaitingCount
+  getWaitingCount,
+  getAllWaitingCounts,
+  callNext
 };

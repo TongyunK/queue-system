@@ -5,6 +5,7 @@ const { sequelize } = require('./models');
 const { seedDatabase } = require('./utils/seeder');
 const { initAdminSettings } = require('./utils/initAdminSettings');
 const createTicketSequencesTable = require('./utils/createTicketSequencesTable');
+const dailyResetScheduler = require('./utils/dailyResetScheduler');
 
 const PORT = process.env.PORT || 3000; // 修改为3001或其他未被占用的端口
 const server = http.createServer(app);
@@ -41,6 +42,13 @@ async function initDatabase() {
 // 启动服务器
 async function startServer() {
   await initDatabase();
+  
+  // 启动每日重置定时任务
+  try {
+    await dailyResetScheduler.start();
+  } catch (error) {
+    console.error('启动定时任务失败:', error);
+  }
   
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`服务器运行在 http://0.0.0.0:${PORT}`);

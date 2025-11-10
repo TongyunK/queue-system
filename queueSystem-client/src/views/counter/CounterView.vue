@@ -1,9 +1,18 @@
 <template>
   <div class="counter-wrapper">
-    <div class="counter-container">
+    <!-- 未找到柜台时显示提示 -->
+    <div v-if="!counterFound" class="unsupported-device-message">
+      <div class="message-content">
+        <div class="chinese-text">當前設備不支持</div>
+        <div class="english-text">Current device is not supported</div>
+      </div>
+    </div>
+    
+    <!-- 找到柜台时显示正常内容 -->
+    <div v-else class="counter-container">
     <!-- 顶部信息栏 -->
     <div class="header-bar">
-      <div class="counter-number">窗口 {{ counterNumber }}</div>
+      <div class="counter-number"># {{ displayCounterNumber }}</div>
       <div class="date-time">
         {{ dateTimeFormatted }}
       </div>
@@ -28,7 +37,7 @@
               <div class="count-number">{{ getWaitingCount(type.id) }}</div>
             </div>
             <div class="last-service-info">
-              <div class="last-service-number">{{ getLastServiceNumber(type.code) }}</div>
+              <div class="last-service-number">{{ getLastServiceNumber(type.id) }}</div>
             </div>
           </div>
         </div>
@@ -40,7 +49,7 @@
         <div class="control-buttons-section">
           <button 
             @click="callNext" 
-            :disabled="!currentBusinessType"
+            :disabled="!currentBusinessType || isServiceStarted"
             class="control-button next-btn"
           >
             <el-icon><ArrowRight /></el-icon>
@@ -49,6 +58,7 @@
           
           <button 
             @click="recallTicket" 
+            :disabled="isServiceStarted"
             class="control-button recall-btn"
           >
             <el-icon><Bell /></el-icon>
@@ -57,6 +67,7 @@
           
           <button 
             @click="startService" 
+            :disabled="!isUserInputting || !inputDisplay || inputDisplay === 'Input'"
             class="control-button start-btn"
           >
             <el-icon><VideoPlay /></el-icon>
@@ -65,6 +76,7 @@
           
           <button 
             @click="completeService" 
+            :disabled="!isServiceStarted"
             class="control-button end-btn"
           >
             <el-icon><Check /></el-icon>
@@ -74,8 +86,8 @@
         
         <!-- 中间显示区域和字母按钮 -->
         <div class="input-section">
-          <div class="input-display">
-            {{ inputDisplay || '请输入业务编码' }}
+          <div :class="['input-display', { 'input-placeholder': !inputDisplay || inputDisplay === 'Input' }]">
+            {{ inputDisplay || 'Input' }}
           </div>
           
           <div class="code-buttons">
@@ -117,10 +129,48 @@
     </div>
   </div>
   </div>
+  
+  <!-- Toast 提示 -->
+  <transition name="toast-fade">
+    <div v-if="showToast" class="toast-message">
+      <div class="toast-content">
+        <div class="toast-icon">✓</div>
+        <div class="toast-text">
+          <div class="chinese-text">{{ toastMessage.chinese }}</div>
+          <div class="english-text">{{ toastMessage.english }}</div>
+        </div>
+      </div>
+    </div>
+  </transition>
+  
+  <!-- 自定义提示弹窗 -->
+  <div v-if="showDialog" class="custom-dialog-overlay" @click="closeDialog">
+    <div class="custom-dialog" @click.stop>
+      <div class="dialog-icon">
+        <div class="error-icon">!</div>
+      </div>
+      <div class="dialog-content">
+        <div class="dialog-title">
+          <div class="chinese-text">提示</div>
+          <div class="english-text">Reminder</div>
+        </div>
+        <div class="dialog-message">
+          <div class="chinese-text">{{ dialogMessage.chinese }}</div>
+          <div class="english-text">{{ dialogMessage.english }}</div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button class="dialog-btn" @click="closeDialog">
+          <div class="chinese-text">確定</div>
+          <div class="english-text">OK</div>
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { businessTypeService, counterService, ticketService } from '@/api';
 import socket from '@/socket';
 import { ArrowRight, Bell, VideoPlay, Check } from '@element-plus/icons-vue';
@@ -128,12 +178,22 @@ import { ArrowRight, Bell, VideoPlay, Check } from '@element-plus/icons-vue';
 // 状态相关
 const status = ref('available'); // 默认为可用状态
 const counterNumber = ref(1); // 当前窗口号
+const displayCounterNumber = computed(() => String(counterNumber.value).padStart(2, '0'));
 const businessTypes = ref([]);
-const waitingCounts = ref([]);
+const waitingCounts = ref({}); // 使用对象存储，key为businessTypeId，value为等待人数
 const currentBusinessType = ref(null);
 const inputDisplay = ref('');
 const businessTypeCodes = ref([]);
 const lastServiceNumbers = ref({}); // 存储各业务类型的上一个服务号
+const currentTicketNumber = ref(''); // 当前柜台的票号
+const isUserInputting = ref(false); // 标记用户是否正在输入
+const isServiceStarted = ref(false); // 标记服务是否已开始
+const showDialog = ref(false); // 控制弹窗显示
+const dialogMessage = ref({ chinese: '', english: '' }); // 弹窗消息内容
+const counterFound = ref(false); // 标记是否找到对应的柜台
+const showToast = ref(false); // 控制 toast 显示
+const toastMessage = ref({ chinese: '', english: '' }); // toast 消息内容
+let toastTimer = null; // toast 定时器
 
 // 日期和时间格式化后的字符串
 const dateTimeFormatted = ref('');
@@ -170,42 +230,64 @@ setInterval(updateDateTime, 1000);
 
 // 获取等待人数
 const getWaitingCount = (businessTypeId) => {
-  // 实际应用中，你应该从waitingCounts中查找对应业务类型的等待人数
-  // 这里为了演示，为每个业务类型随机生成一个等待人数
-  return Math.floor(Math.random() * 10);
+  // 从waitingCounts中查找对应业务类型的等待人数
+  const count = waitingCounts.value[businessTypeId];
+  // 如果存在则返回，否则返回0
+  return count !== undefined ? count : 0;
 };
 
 // 获取上一个服务号
-const getLastServiceNumber = (businessTypeCode) => {
+const getLastServiceNumber = (businessTypeId) => {
   // 如果存在此业务类型的上一个服务号，则返回它
-  if (lastServiceNumbers.value[businessTypeCode]) {
-    return lastServiceNumbers.value[businessTypeCode];
+  const lastTicketNo = lastServiceNumbers.value[businessTypeId];
+  if (lastTicketNo) {
+    return lastTicketNo;
   }
-  // 否则返回默认值，如"未服务"或格式化的初始值
-  return businessTypeCode + '000';
+  // 否则返回默认值
+  // 根据业务类型ID查找对应的code
+  const businessType = businessTypes.value.find(type => type.id === businessTypeId);
+  const code = businessType?.code || 'CODE';
+  return code + '000';
 };
 
 // 获取等待人数数据
 const fetchWaitingCounts = async () => {
-  // 票号功能已移除，waitingCounts置为空数组
-  waitingCounts.value = [];
+  try {
+    // 使用批量接口一次性获取所有业务类型的等待人数
+    const response = await ticketService.getAllWaitingCounts();
+    // 后端返回格式: { businessTypeId: waitingCount, ... }
+    waitingCounts.value = response.data || {};
+    console.log('等待人数已更新:', waitingCounts.value);
+  } catch (error) {
+    console.error('获取等待人数失败:', error);
+    // 出错时将所有业务类型的等待人数设为0
+    const counts = {};
+    if (businessTypes.value && businessTypes.value.length > 0) {
+      businessTypes.value.forEach(type => {
+        counts[type.id] = 0;
+      });
+    }
+    waitingCounts.value = counts;
+  }
 };
 
 // 获取各业务类型的上一个服务号
 const fetchLastServiceNumbers = async () => {
   try {
-    // 实际应用中，应该调用API获取各业务类型的上一个服务号
-    // 这里为了演示，模拟一些数据
-    const mockData = {
-      'A': 'A002',
-      'B': 'B003',
-      'C': 'C001',
-      'D': 'D005',
-      'E': 'E002'
-    };
-    lastServiceNumbers.value = mockData;
+    // 如果还没有柜台号，先不查询
+    if (!counterNumber.value || counterNumber.value === 0) {
+      return;
+    }
+    
+    // 调用API获取当前柜台所有业务类型的上一个服务号
+    const response = await counterService.getLastServiceNumbers(counterNumber.value);
+    // 后端返回格式: { businessTypeId: last_ticket_no, ... }
+    lastServiceNumbers.value = response.data || {};
+    console.log('上一个服务号已更新:', lastServiceNumbers.value);
   } catch (error) {
     console.error('获取上一个服务号失败:', error);
+    // 出错时清空数据
+    lastServiceNumbers.value = {};
   }
 };
 
@@ -231,64 +313,123 @@ const getClientIP = async () => {
   }
 };
 
+// 获取当前柜台的票号
+const fetchCurrentTicketNumber = async () => {
+  try {
+    // 如果还没有柜台号，先不查询
+    if (!counterNumber.value || counterNumber.value === 0) {
+      return;
+    }
+    
+    // 使用新接口直接根据柜台号获取柜台信息
+    const response = await counterService.getByNumber(counterNumber.value);
+    const counter = response.data;
+    
+    if (counter) {
+      // 获取 current_ticket_number 字段（可能是 current_ticket_number 或 currentTicketNumber）
+      const ticketNumber = counter.current_ticket_number || counter.currentTicketNumber || '';
+      currentTicketNumber.value = ticketNumber;
+      
+      // 如果用户没有在输入，则更新显示
+      if (!isUserInputting.value) {
+        inputDisplay.value = ticketNumber || 'Input';
+      }
+      console.log('当前票号已更新:', ticketNumber);
+    } else {
+      console.warn('未找到当前柜台信息');
+      if (!isUserInputting.value) {
+        inputDisplay.value = 'Input';
+      }
+    }
+  } catch (error) {
+    console.error('获取当前票号失败:', error);
+    if (!isUserInputting.value) {
+      inputDisplay.value = 'Input';
+    }
+  }
+};
+
 // 获取窗口号
 const fetchCounterNumber = async () => {
   try {
     // 获取客户端IP地址
     const clientIP = await getClientIP();
     
-    // 获取所有柜台
-    const response = await counterService.getAll();
-    const counters = response.data;
+    let counter = null;
     
     // 本地开发环境特殊处理
     if (clientIP === '127.0.0.1' || clientIP === 'localhost') {
       console.log('检测到本地开发环境，尝试获取可用柜台列表');
       
-      // 如果有可用的柜台，使用第一个柜台
-      if (counters && counters.length > 0) {
-        // 1. 尝试找到IP为10.10.8.58的柜台（根据您提供的信息）
-        const targetIpCounter = counters.find(counter => counter.ip_address === '10.10.8.58');
-        
-        if (targetIpCounter) {
-          counterNumber.value = targetIpCounter.counter_number;
-          console.log('已找到指定IP(10.10.8.58)柜台:', targetIpCounter);
-          
-          // 显示提示，指明当前使用的是模拟柜台
-          alert(`当前运行在本地开发环境，自动选择IP为${targetIpCounter.ip_address}的柜台。柜台号：${targetIpCounter.counter_number}`);
+      // 1. 优先尝试找到IP为10.10.8.58的柜台（根据您提供的信息）
+      try {
+        const response = await counterService.getByIP('10.10.8.58');
+        counter = response.data;
+        if (counter) {
+          counterNumber.value = counter.counter_number;
+          counterFound.value = true; // 标记已找到柜台
+          console.log('已找到指定IP(10.10.8.58)柜台:', counter);
+          showMessageDialog(
+            `當前運行在本地開發環境，自動選擇IP為${counter.ip_address}的櫃台。櫃台號：${counter.counter_number}`,
+            `Running in local development environment, automatically selected counter with IP ${counter.ip_address}. Counter number: ${counter.counter_number}`
+          );
+          await fetchCurrentTicketNumber();
+          await fetchLastServiceNumbers();
           return;
         }
-        
-        // 2. 如果没找到指定IP，使用第一个可用的柜台
-        counterNumber.value = counters[0].counter_number;
-        console.log('使用第一个可用的柜台:', counters[0]);
-        
-        // 显示提示
-        alert(`当前运行在本地开发环境，自动选择第一个可用柜台。柜台号：${counters[0].counter_number}`);
-        return;
+      } catch (error) {
+        // IP不存在，继续尝试其他方式
+      }
+      
+      // 2. 如果没找到指定IP，获取所有柜台并使用第一个
+      try {
+        const response = await counterService.getAll();
+        const counters = response.data;
+        if (counters && counters.length > 0) {
+          counter = counters[0];
+          counterNumber.value = counter.counter_number;
+          counterFound.value = true; // 标记已找到柜台
+          console.log('使用第一个可用的柜台:', counter);
+          showMessageDialog(
+            `當前運行在本地開發環境，自動選擇第一個可用櫃台。櫃台號：${counter.counter_number}`,
+            `Running in local development environment, automatically selected the first available counter. Counter number: ${counter.counter_number}`
+          );
+          await fetchCurrentTicketNumber();
+          await fetchLastServiceNumbers();
+          return;
+        }
+      } catch (error) {
+        console.error('获取柜台列表失败:', error);
       }
     } else {
-      // 生产环境正常处理
-      // 查找匹配IP地址的柜台
-      const matchedCounter = counters.find(counter => counter.ip_address === clientIP);
-      
-      if (matchedCounter) {
-        counterNumber.value = matchedCounter.counter_number;
-        console.log('已找到匹配的柜台:', matchedCounter);
-        return;
+      // 生产环境：使用新接口根据IP自动匹配柜台
+      try {
+        const response = await counterService.getByIPOrNumber(clientIP, null);
+        counter = response.data;
+        if (counter) {
+          counterNumber.value = counter.counter_number;
+          counterFound.value = true; // 标记已找到柜台
+          console.log('已找到匹配的柜台:', counter);
+          await fetchCurrentTicketNumber();
+          await fetchLastServiceNumbers();
+          return;
+        }
+      } catch (error) {
+        // 如果根据IP找不到，继续处理
+        console.warn('根据IP未找到匹配的柜台:', error);
       }
     }
     
     // 未匹配到柜台时
     console.warn('未找到匹配的柜台，使用默认值');
     counterNumber.value = 0; // 默认值
-    
-    // 显示错误提示
-    alert(`未能找到匹配当前IP(${clientIP})的柜台配置，请在管理后台绑定IP地址。`);
+    counterFound.value = false; // 标记未找到柜台
+    // 不显示弹窗，直接显示不支持提示
   } catch (error) {
     console.error('获取窗口号失败:', error);
     counterNumber.value = 0; // 出错时使用默认值
-    alert('获取窗口号失败，请检查网络连接或联系管理员');
+    counterFound.value = false; // 标记未找到柜台
+    // 不显示弹窗，直接显示不支持提示
   }
 };
 
@@ -313,6 +454,12 @@ onMounted(async () => {
     // 定期刷新等待人数（每10秒）
     setInterval(fetchWaitingCounts, 10000);
     
+    // 定期刷新当前票号（每5秒）
+    setInterval(fetchCurrentTicketNumber, 5000);
+    
+    // 定期刷新上一个服务号（每10秒）
+    setInterval(fetchLastServiceNumbers, 10000);
+    
     // 获取窗口信息（实际应用中可能需要登录或其他方式获取）
     // 这里简化处理
   } catch (error) {
@@ -324,63 +471,169 @@ onMounted(async () => {
   socket.on('ticket:statusUpdated', () => {
     fetchWaitingCounts();
     fetchLastServiceNumbers();
+    fetchCurrentTicketNumber(); // 票号更新时也刷新当前票号
   });
+  
+  // 监听叫号事件，所有柜台页面都刷新数据
+  socket.on('ticket:nextCalled', async () => {
+    console.log('收到叫号事件，刷新所有数据');
+    // 立即刷新所有相关数据
+    await Promise.all([
+      fetchWaitingCounts(),        // 刷新等待人数
+      fetchCurrentTicketNumber(),  // 刷新当前票号
+      fetchLastServiceNumbers()    // 刷新上一个服务号
+    ]);
+  });
+});
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
 });
 
 const selectBusinessType = (type) => {
   currentBusinessType.value = type;
 };
 
+// 显示弹窗
+const showMessageDialog = (chinese, english) => {
+  dialogMessage.value = { chinese, english };
+  showDialog.value = true;
+};
+
+// 关闭弹窗
+const closeDialog = () => {
+  showDialog.value = false;
+};
+
+// 显示 toast 提示
+const showToastMessage = (chinese, english) => {
+  toastMessage.value = { chinese, english };
+  showToast.value = true;
+  
+  // 清除之前的定时器
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+  }
+  
+  // 3秒后自动隐藏
+  toastTimer = setTimeout(() => {
+    showToast.value = false;
+  }, 1000);
+};
+
 const callNext = async () => {
-  if (!currentBusinessType.value) {
-    alert('請先選擇業務類型');
+  // 注意：业务类型和服务状态的检查已通过按钮的disabled属性控制，不会触发
+  // 但柜台号的检查需要保留，因为按钮没有检查这个条件
+  
+  if (!counterNumber.value || counterNumber.value === 0) {
+    showMessageDialog('未找到當前櫃台，請刷新頁面重試', 'Counter not found, please refresh the page and try again');
     return;
   }
   
   try {
-    // 票号功能已移除，显示提示
-    alert('此功能已不可用');
+    // 调用后端API处理叫号
+    await ticketService.callNext(currentBusinessType.value.id, counterNumber.value);
+    
+    // 立即刷新页面数据
+    await Promise.all([
+      fetchWaitingCounts(),        // 刷新等待人数
+      fetchCurrentTicketNumber(),  // 刷新当前票号
+      fetchLastServiceNumbers()    // 刷新上一个服务号
+    ]);
+    
+    // 取消业务类型选中
+    currentBusinessType.value = null;
+    
+    // 显示成功提示
+    showToastMessage('叫號成功', 'Call successful');
+    
+    console.log('叫号成功，数据已刷新');
   } catch (error) {
     console.error('叫号失败:', error);
+    const errorMsg = error.response?.data?.message || error.message || '未知錯誤';
+    showMessageDialog('叫號失敗：' + errorMsg, 'Call failed: ' + errorMsg);
   }
 };
 
 const recallTicket = () => {
+  // 注意：服务状态的检查已通过按钮的disabled属性控制，不会触发
+  
   try {
     // 重新叫号功能
-    alert('重新叫号功能已触发');
     // 实际应用中应该调用socket或API
     socket.emit('ticket:recall', {
-      counterNumber: 1 // 使用固定柜台号
+      counterNumber: counterNumber.value || 1
     });
+    
+    // 显示成功提示
+    showToastMessage('重新叫號成功', 'Recall successful');
   } catch (error) {
     console.error('重新叫号失败:', error);
+    showMessageDialog('重新叫號失敗', 'Recall failed');
   }
 };
 
 const startService = () => {
+  // 注意：输入状态的检查已通过按钮的disabled属性控制，不会触发
+  
   try {
     // 开始服务功能
-    alert('开始服务功能已触发');
+    isServiceStarted.value = true;
+    console.log('开始服务，输入的服务号:', inputDisplay.value);
+    
+    // 显示成功提示
+    showToastMessage('服務已開始', 'Service started');
+    
+    // 这里可以添加语音播报或其他逻辑
+    // 稍后实现传递信号进行语音播报
   } catch (error) {
     console.error('开始服务失败:', error);
   }
 };
 
 const completeService = async () => {
+  // 注意：服务状态的检查已通过按钮的disabled属性控制，不会触发
+  
   try {
     // 完成服务
-    await counterService.endService(1); // 使用固定柜台号
-    alert('服务已完成');
+    if (counterNumber.value && counterNumber.value !== 0) {
+      await counterService.endService(counterNumber.value);
+    }
+    
+    // 重置服务状态
+    isServiceStarted.value = false;
+    
+    // 清空输入
+    inputDisplay.value = '';
+    isUserInputting.value = false;
+    inputDisplay.value = currentTicketNumber.value || 'Input';
+    
+    console.log('服务已完成');
+    
+    // 显示成功提示
+    showToastMessage('服務已完成', 'Service completed');
+    
     // 刷新等待人数
     fetchWaitingCounts();
   } catch (error) {
     console.error('完成服务失败:', error);
+    const errorMsg = error.response?.data?.message || error.message || '未知錯誤';
+    showMessageDialog('完成服務失敗：' + errorMsg, 'Service completion failed: ' + errorMsg);
   }
 };
 
 // 将业务代码添加到输入显示
 const appendToInput = (code) => {
+  // 如果用户开始输入，标记为正在输入状态
+  if (!isUserInputting.value) {
+    isUserInputting.value = true;
+    inputDisplay.value = ''; // 清空当前票号显示
+  }
+  
   if (inputDisplay.value.length < 5) {
     inputDisplay.value += code;
   }
@@ -389,12 +642,22 @@ const appendToInput = (code) => {
 // 清空输入显示
 const clearInput = () => {
   inputDisplay.value = '';
+  isUserInputting.value = false;
+  // 清空当前票号显示，显示Input
+  inputDisplay.value = 'Input';
 };
 
 // 删除最后一个字符
 const deleteLastChar = () => {
-  if (inputDisplay.value.length > 0) {
-    inputDisplay.value = inputDisplay.value.slice(0, -1);
+  if (isUserInputting.value) {
+    if (inputDisplay.value.length > 0) {
+      inputDisplay.value = inputDisplay.value.slice(0, -1);
+    }
+    // 如果删除后为空，清空当前票号显示，显示Input
+    if (inputDisplay.value.length === 0) {
+      isUserInputting.value = false;
+      inputDisplay.value = 'Input';
+    }
   }
 };
 
@@ -672,12 +935,12 @@ const deleteLastChar = () => {
 }
 
 .start-btn {
-  background-color: #909399;
+  background-color: #409EFF; /* #909399; */
   color: white;
 }
 
 .start-btn:hover {
-  background-color: #a6a9ad;
+  background-color: #66b1ff; /* #a6a9ad; */
 }
 
 .end-btn {
@@ -712,8 +975,8 @@ const deleteLastChar = () => {
   border: 1px solid #dcdfe6;
   border-radius: 10px;
   padding: 15px;
-  font-size: 1.8rem;
-  min-height: 65px;
+  font-size: 2.6rem;
+  min-height: 90px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -723,6 +986,10 @@ const deleteLastChar = () => {
   margin: 0 auto; /* 水平居中 */
   width: 90%; /* 控制宽度 */
   box-sizing: border-box; /* 确保内边距和边框都计入宽度 */
+}
+
+.input-display.input-placeholder {
+  color: #909399; /* 灰色文字 */
 }
 
 .code-buttons {
@@ -1227,6 +1494,263 @@ const deleteLastChar = () => {
     min-width: 38px;
     max-width: none;
     font-size: 1.2rem;
+  }
+}
+
+/* 自定义弹窗样式 */
+.custom-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+}
+
+.custom-dialog {
+  background-color: white;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 400px;
+  padding: 20px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dialog-icon {
+  margin-bottom: 15px;
+}
+
+.error-icon {
+  width: 60px;
+  height: 60px;
+  background-color: #f56c6c;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 36px;
+  font-weight: bold;
+}
+
+.dialog-content {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.dialog-title {
+  margin-bottom: 10px;
+}
+
+.dialog-title .chinese-text {
+  font-size: 1.2rem;
+  color: #303133;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.dialog-title .english-text {
+  font-size: 1rem;
+  color: #606266;
+}
+
+.dialog-message {
+  margin-top: 10px;
+}
+
+.dialog-message .chinese-text {
+  font-size: 1.1rem;
+  color: #303133;
+  margin-bottom: 5px;
+}
+
+.dialog-message .english-text {
+  font-size: 0.9rem;
+  color: #606266;
+}
+
+.dialog-footer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.dialog-btn {
+  background-color: #409EFF;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 25px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.3s;
+  min-width: 80px;
+}
+
+.dialog-btn:hover {
+  background-color: #66b1ff;
+}
+
+.dialog-btn .chinese-text {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.dialog-btn .english-text {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .custom-dialog {
+    width: 95%;
+    padding: 15px;
+  }
+  
+  .error-icon {
+    width: 50px;
+    height: 50px;
+    font-size: 30px;
+  }
+  
+  .dialog-title .chinese-text {
+    font-size: 1.1rem;
+  }
+  
+  .dialog-title .english-text {
+    font-size: 0.9rem;
+  }
+  
+  .dialog-message .chinese-text {
+    font-size: 1rem;
+  }
+  
+  .dialog-message .english-text {
+    font-size: 0.85rem;
+  }
+}
+
+/* Toast 提示样式 */
+.toast-message {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10001;
+  pointer-events: none;
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: #67c23a;
+  color: white;
+  padding: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  max-width: 400px;
+}
+
+.toast-icon {
+  font-size: 20px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.toast-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-text .chinese-text {
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.toast-text .english-text {
+  font-size: 1rem;
+  opacity: 0.95;
+}
+
+/* Toast 动画 */
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.toast-fade-enter-from {
+  opacity: 0;
+  transform: translate(-50%, -50%) translateY(-20px);
+}
+
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -50%) translateY(20px);
+}
+
+/* 设备不支持提示样式 */
+.unsupported-device-message {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f7fa;
+  z-index: 1;
+}
+
+.message-content {
+  text-align: center;
+  padding: 40px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  width: 90%;
+}
+
+.message-content .chinese-text {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #303133;
+  margin-bottom: 15px;
+}
+
+.message-content .english-text {
+  font-size: 1.2rem;
+  color: #606266;
+}
+
+/* 响应式适配 */
+@media (max-width: 768px) {
+  .message-content {
+    padding: 30px 20px;
+  }
+  
+  .message-content .chinese-text {
+    font-size: 1.5rem;
+  }
+  
+  .message-content .english-text {
+    font-size: 1rem;
   }
 }
 </style>

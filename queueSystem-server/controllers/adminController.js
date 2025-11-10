@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const { settings: Setting, counters: Counter, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const dailyResetScheduler = require('../utils/dailyResetScheduler');
 
 // 管理员登录验证
 const login = async (req, res) => {
@@ -79,6 +80,17 @@ const updateSetting = async (req, res) => {
     if (description !== undefined) updateData.description = description;
     
     await setting.update(updateData);
+    
+    // 如果更新的是 ticket_reset_time，立即重启定时任务
+    if (key === 'ticket_reset_time' && value !== undefined) {
+      try {
+        await dailyResetScheduler.restart();
+        console.log('检测到 ticket_reset_time 设置已更改，定时任务已重新启动');
+      } catch (error) {
+        console.error('重启定时任务失败:', error);
+        // 不阻止设置更新，只记录错误
+      }
+    }
     
     res.json(setting);
   } catch (error) {

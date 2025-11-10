@@ -29,7 +29,37 @@ const getWaitingCountForBusinessType = async (req, res) => {
   }
 };
 
+// 批量获取所有业务类型的等待人数
+const getAllWaitingCounts = async (req, res) => {
+  try {
+    const waitingCounts = await ticketService.getAllWaitingCounts();
+    res.status(200).json(waitingCounts);
+  } catch (error) {
+    console.error('批量获取等待人数失败:', error);
+    res.status(500).json({ message: '批量获取等待人数失败', error: error.message });
+  }
+};
+
+// 叫号：处理下一个票号
+const callNext = async (req, res) => {
+  try {
+    const { businessTypeId, counterNumber } = req.body;
+    
+    if (!businessTypeId || !counterNumber) {
+      return res.status(400).json({ message: '业务类型ID和柜台号不能为空' });
+    }
+
+    const result = await ticketService.callNext(businessTypeId, counterNumber);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('叫号失败:', error);
+    res.status(500).json({ message: '叫号失败', error: error.message });
+  }
+};
+
 module.exports = {
   getTicket,
-  getWaitingCountForBusinessType
+  getWaitingCountForBusinessType,
+  getAllWaitingCounts,
+  callNext
 };

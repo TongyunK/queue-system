@@ -6,6 +6,7 @@ const routes = require('./routes');
 const app = express();
 
 // 中间件
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

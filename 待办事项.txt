@@ -1,20 +1,53 @@
 ## 2025.11.07
 CounterView.vue 页面
-1、字母按键查询business_types表
-2、业务类型区域，当前等待人数根据business_types表的id，关联查询ticket_sequences表中各个类型的当前等待人数，
-计算方式是current_total_number字段值 - current_passed _number字段值；
+⭐1、字母按键查询business_types表 ⭐
 
-各个业务的上一个服务号码last-service-number，根据业务id和当前柜台id关联查询counter_business_last_ticket表，显示last_ticket_no字段值
+⭐2、业务类型区域，当前等待人数根据business_types表的id，关联查询ticket_sequences表中各个类型的当前等待人数，
+计算方式是current_total_number字段值 减去 current_passed_number字段值 得到的值；
 
-3、根据当前IP地址，查询counters表，获取当前柜台号
+⭐各个业务的上一个服务号码last-service-number，根据业务id和当前柜台id关联查询counter_business_last_ticket表，显示last_ticket_no字段值
 
-4、点击next按钮，ticket_sequences表对应的业务队列current_passed _number字段值自增1，
-并修改counters表的current_ticket_number字段值（业务code+三位的current_passed _number值）
+⭐3、根据当前IP地址，查询counters表，获取当前柜台号 ⭐
+
+-----------------------------------------------------
+
+⭐4、点击next按钮，ticket_sequences表对应的业务队列current_passed_number字段值自增1，
+并修改counters表的current_ticket_number字段值（业务code+三位的current_passed_number值）
 稍后实现传递信号进行语音播报
+【 CounterView.vue页面，点击next按钮，要实现如下：
+1、ticket_sequences表对应的业务队列current_passed_number字段值自增1，
+2、同时修改counters表的current_ticket_number字段值（为业务code+三位的current_passed_number值）。
+3、根据业务id和柜台id，修改counter_business_last_ticket表对应记录的last_ticket_no字段值（为业务code+三位的current_passed_number值）。
+4、之后立马刷新页面，实现各业务等待人数，和当前柜台当前服务号的更新】
+添加 ticket:nextCalled 事件监听器
+收到事件后立即刷新：
+fetchWaitingCounts() - 刷新等待人数
+fetchCurrentTicketNumber() - 刷新当前票号
+fetchLastServiceNumbers() - 刷新上一个服务号
+
+-----------------------------------------------------
 
 5、点击recall，传递信号进行语音播报
 
 6、手动输入服务号之后，点击start按钮，传递信号进行语音播报
-7、点击end之后，才能点击next进行下一个（即点击了start之后，必须要点击一次end才可以点击next）
 
-5、输入显示区域，显示counters表的current_ticket_number字段值
+⭐7、点击end之后，才能点击next进行下一个（即点击了start之后，必须要点击一次end才可以点击next）
+
+⭐8、输入显示区域，显示counters表的current_ticket_number字段值 ⭐
+【CounterView.vue页面，输入显示区域，根据当前ip值或counter_number，调用后端API查询并显示counters表的current_ticket_number字段值】
+
+⭐9、通过IP地址如果没有查询到counter，则counterView页面直接显示“设备不支持”
+
+10、ticker取票页面，也要实现取票之后，实现 WebSocket 广播功能。当点击 取票 按钮后，所有柜台页面会立即刷新。
+
+⭐11、当手动点击数字按钮输入之后，才可以点击start按钮，点击start按钮之后，在点击end按钮之前，不能够点击next和recall。
+给出弹窗提示，使用繁体中文和英文提示
+
+
+⭐12、定时任务：读取settings表的key值为ticket_reset_time的value值，每日的这个时间，
+自动将ticket_sequences表的所有记录的current_total_number和current_passed_number字段值重置为0，date字段设置为当前日期（比如2025-11-11）
+自动将ticket_sequences表的所有记录的last_ticket_no字段值清空
+自动将counters表的所有记录的current_ticket_number字段值清空
+
+13、http://localhost:5173/admin/settings页面更新settings，会重新启动重置任务吗
+14、toost提示之后，才会更新页面

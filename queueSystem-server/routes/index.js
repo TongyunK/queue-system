@@ -13,8 +13,14 @@ router.get('/', (req, res) => {
     { method: 'POST', path: '/api/business-types', description: '创建新业务类型' },
     { method: 'PUT', path: '/api/business-types/:id', description: '更新业务类型' },
     { method: 'POST', path: '/api/tickets', description: '取票' },
+    { method: 'POST', path: '/api/tickets/call-next', description: '叫号：处理下一个票号' },
     { method: 'GET', path: '/api/tickets/waiting/:businessTypeId', description: '获取等待人数' },
+    { method: 'GET', path: '/api/tickets/waiting-counts', description: '批量获取所有业务类型的等待人数' },
     { method: 'GET', path: '/api/counters', description: '获取所有窗口信息' },
+    { method: 'GET', path: '/api/counters/by-ip/:ip', description: '根据IP获取柜台信息' },
+    { method: 'GET', path: '/api/counters/by-number/:counterNumber', description: '根据柜台号获取柜台信息' },
+    { method: 'GET', path: '/api/counters/match', description: '根据IP或柜台号自动匹配柜台' },
+    { method: 'GET', path: '/api/counters/:counterNumber/last-service-numbers', description: '根据柜台号获取所有业务类型的上一个服务号' },
     { method: 'PUT', path: '/api/counters/:id', description: '更新窗口信息' },
     { method: 'POST', path: '/api/counters/:id/end-service', description: '结束当前服务' },
     { method: 'GET', path: '/api/admin/tables', description: '获取数据库所有表' },
@@ -89,6 +95,10 @@ router.use('/', ticketRoutes);
 
 // 窗口路由
 router.get('/counters', counterController.getAllCounters);
+router.get('/counters/by-ip/:ip', counterController.getCounterByIP);
+router.get('/counters/by-number/:counterNumber', counterController.getCounterByNumber);
+router.get('/counters/match', counterController.getCounterByIPOrNumber);
+router.get('/counters/:counterNumber/last-service-numbers', counterController.getLastServiceNumbersByCounterNumber);
 router.put('/counters/:id', counterController.updateCounter);
 router.post('/counters/:id/end-service', counterController.endService);
 router.get('/client-ip', counterController.getClientIP);

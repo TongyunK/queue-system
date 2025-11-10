@@ -1,6 +1,8 @@
 const { Server } = require('socket.io');
 const { sequelize, counters: Counter } = require('../models');
 
+let ioInstance = null;
+
 function initSocketIO(server) {
   const io = new Server(server, {
     cors: {
@@ -8,6 +10,8 @@ function initSocketIO(server) {
       methods: ["GET", "POST"]
     }
   });
+  
+  ioInstance = io; // 保存io实例供外部使用
   
   io.on('connection', (socket) => {
     console.log('客户端连接:', socket.id);
@@ -56,4 +60,9 @@ function initSocketIO(server) {
   return io;
 }
 
-module.exports = { initSocketIO };
+// 获取Socket.IO实例
+function getIO() {
+  return ioInstance;
+}
+
+module.exports = { initSocketIO, getIO };

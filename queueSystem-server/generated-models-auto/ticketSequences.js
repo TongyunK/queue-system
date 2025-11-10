@@ -15,7 +15,7 @@ module.exports = function(sequelize, DataTypes) {
       type: DataTypes.INTEGER,
       allowNull: true
     },
-    'current_passed _number': {
+    current_passed_number: {
       type: DataTypes.INTEGER,
       allowNull: true,
       defaultValue: 0
