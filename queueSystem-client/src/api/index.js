@@ -8,7 +8,9 @@ const api = axios.create({
 });
 
 export const businessTypeService = {
-  getAll: () => api.get('/business-types')
+  getAll: () => api.get('/business-types'),
+  getDisplayData: () => api.get('/business-types/display'),
+  getDisplayRemarks: () => api.get('/business-types/display-remarks')
 };
 
 // 票号服务

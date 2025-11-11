@@ -87,6 +87,8 @@ router.get('/', (req, res) => {
 
 // 业务类型路由
 router.get('/business-types', businessTypeController.getAllBusinessTypes);
+router.get('/business-types/display', businessTypeController.getBusinessTypesWithLatestTickets);
+router.get('/business-types/display-remarks', businessTypeController.getDisplayRemarks);
 router.post('/business-types', businessTypeController.createBusinessType);
 router.put('/business-types/:id', businessTypeController.updateBusinessType);
 

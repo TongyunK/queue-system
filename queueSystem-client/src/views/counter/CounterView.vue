@@ -37,7 +37,7 @@
               <div class="count-number">{{ getWaitingCount(type.id) }}</div>
             </div>
             <div class="last-service-info">
-              <div class="last-service-number">{{ getLastServiceNumber(type.id) }}</div>
+              <div :class="['last-service-number', { 'default-value': isDefaultServiceNumber(type.id) }]">{{ getLastServiceNumber(type.id) }}</div>
             </div>
           </div>
         </div>
@@ -248,6 +248,13 @@ const getLastServiceNumber = (businessTypeId) => {
   const businessType = businessTypes.value.find(type => type.id === businessTypeId);
   const code = businessType?.code || 'CODE';
   return code + '000';
+};
+
+// 检查是否是默认服务号（code + '000'）
+const isDefaultServiceNumber = (businessTypeId) => {
+  // 如果不存在此业务类型的上一个服务号，则为默认值
+  const lastTicketNo = lastServiceNumbers.value[businessTypeId];
+  return !lastTicketNo;
 };
 
 // 获取等待人数数据
@@ -905,6 +912,10 @@ const deleteLastChar = () => {
   font-size: 1.6rem;
   font-weight: bold;
   color: #409EFF;
+}
+
+.last-service-number.default-value {
+  color: #909399;
 }
 
 /* 左侧控制按钮区域 */

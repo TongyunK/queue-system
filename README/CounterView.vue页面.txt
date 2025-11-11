@@ -71,3 +71,7 @@ fetchLastServiceNumbers() - 刷新上一个服务号
 ⭐15、CounterView.vue页面，当等待人数为0时，点击next和recall按钮，
     弹出提示“该服务当前无等待人数”（繁体+英文），并且不调用后端API处理叫号
 
+⭐16、CounterView.vue页面，当不存在上一个服务号，而显示A000（code + '000'）时，字体用灰色显示
+
+⭐17、但点击next并成功调用后端API处理叫号时，除了要通知所有CounterView.vue页面刷新数据显示，还需要通知DisplayView.vue页面刷新数据显示
+

@@ -1,0 +1,21 @@
+## 2025.11.11
+DisplayView.vue 页面
+
+1、重新设计DisplayView.vue，
+  1、数据：
+    查询数据库business_types表中的所有业务类型数据，先通过关联表获取所有业务的服务记录（包含业务名称、服务号、柜台号）。
+    对每个业务（按 business_types.id 分组），按服务号（last_ticket_no）降序排序，用 ROW_NUMBER() 标记每条记录的序号（最新服务号为 1）。
+    筛选出序号为 1 的记录，即每个业务的最新服务号及对应柜台。
+  2、页面样式：
+    一行只显示一个业务类型信息，每一行左侧1/3区域显示业务code（ABCDE），code下方显示业务name，name下方显示english_name，右侧的2/3区域显示每个业务的最新服务号及对应柜台
+
+
+“現時籌號 Current Queue No.  櫃台 Counter”这里的文字需要
+
+2、将页面的底色改成绿色，并在content的下方添加一块显示区域，
+读取settings表中key为display_remarks的value值，显示在content下方区域
+
+3、不论页面大小如何改变，始终做到header和remarks-area部分分别占页面总高度的1/13，图片宽度字段伸缩自适应
+  content部分用完剩下的11/13空间，字体大小也要自适应改变
+
+4、实现读取 display_bg.png 的背景色，并将其应用到整个页面背景
