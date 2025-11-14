@@ -98,39 +98,33 @@ const getWaitingCount = async (businessTypeId) => {
 };
 
 // 批量获取所有业务类型的等待人数
+// 优化版本：使用SQL JOIN一次性获取所有数据，减少数据库查询次数
 const getAllWaitingCounts = async () => {
   const today = getTodayDate();
   
-  // 获取所有业务类型
-  const allBusinessTypes = await businessTypes.findAll();
+  // 使用优化的SQL查询，一次性获取所有业务类型及其等待人数
+  const query = `
+    SELECT 
+      bt.id AS business_type_id,
+      COALESCE(
+        MAX(ts.current_total_number - ts.current_passed_number),
+        0
+      ) AS waiting_count
+    FROM business_types bt
+    LEFT JOIN ticket_sequences ts ON bt.id = ts.business_type_id AND ts.date = :today
+    GROUP BY bt.id
+  `;
   
-  // 获取今天所有的票号序列
-  const allTicketSequences = await ticketSequences.findAll({
-    where: {
-      date: today
-    }
+  const results = await sequelize.query(query, {
+    replacements: { today },
+    type: sequelize.QueryTypes.SELECT
   });
   
   // 构建等待人数映射对象
   const waitingCounts = {};
-  
-  // 遍历所有业务类型，计算等待人数
-  for (const businessType of allBusinessTypes) {
-    const ticketSequence = allTicketSequences.find(
-      seq => seq.business_type_id === businessType.id
-    );
-    
-    if (ticketSequence) {
-      // 计算等待人数：current_total_number - current_passed_number
-      waitingCounts[businessType.id] = Math.max(
-        0,
-        ticketSequence.current_total_number - ticketSequence.current_passed_number
-      );
-    } else {
-      // 如果今天还没有取票记录，则等待人数为0
-      waitingCounts[businessType.id] = 0;
-    }
-  }
+  results.forEach(row => {
+    waitingCounts[row.business_type_id] = Math.max(0, row.waiting_count || 0);
+  });
   
   return waitingCounts;
 };

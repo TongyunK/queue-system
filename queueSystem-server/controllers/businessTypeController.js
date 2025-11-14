@@ -58,11 +58,12 @@ const updateBusinessType = async (req, res) => {
 };
 
 // 获取所有业务类型及其最新服务号及对应柜台（用于显示屏）
+// 优化版本：合并两次查询为一次，减少数据库访问
 const getBusinessTypesWithLatestTickets = async (req, res) => {
   try {
-    // 使用 SQL 查询获取每个业务类型的最新服务号及对应柜台
-    // 对每个业务类型（按 business_type_id 分组），按 last_ticket_no 降序排序
-    // 使用 ROW_NUMBER() 标记每条记录的序号，筛选出序号为 1 的记录
+    // 使用优化的 SQL 查询，一次性获取所有业务类型及其最新服务号
+    // 使用 ROW_NUMBER() 窗口函数获取每个业务类型的最新服务号
+    // 使用 LEFT JOIN 确保所有业务类型都被包含，即使没有服务记录
     const query = `
       WITH RankedTickets AS (
         SELECT 
@@ -96,40 +97,22 @@ const getBusinessTypesWithLatestTickets = async (req, res) => {
         counter_number,
         counter_name
       FROM RankedTickets
-      WHERE row_num = 1
+      WHERE row_num = 1 OR row_num IS NULL
       ORDER BY code ASC
     `;
 
     const [results] = await sequelize.query(query);
 
-    // 处理结果，确保每个业务类型都有数据（即使没有服务记录）
-    const allBusinessTypes = await BusinessType.findAll({
-      where: { status: 'active' },
-      order: [['code', 'ASC']]
-    });
-
-    const resultMap = new Map();
-    results.forEach(row => {
-      resultMap.set(row.business_type_id, row);
-    });
-
-    const finalResults = allBusinessTypes.map(bt => {
-      const row = resultMap.get(bt.id);
-      if (row) {
-        return row;
-      } else {
-        // 如果没有服务记录，返回业务类型信息，服务号和柜台为空
-        return {
-          business_type_id: bt.id,
-          code: bt.code,
-          name: bt.name,
-          english_name: bt.english_name,
-          last_ticket_no: null,
-          counter_number: null,
-          counter_name: null
-        };
-      }
-    });
+    // 格式化结果，确保所有字段都存在
+    const finalResults = results.map(row => ({
+      business_type_id: row.business_type_id,
+      code: row.code,
+      name: row.name,
+      english_name: row.english_name,
+      last_ticket_no: row.last_ticket_no || null,
+      counter_number: row.counter_number || null,
+      counter_name: row.counter_name || null
+    }));
 
     res.json(finalResults);
   } catch (error) {
@@ -156,10 +139,115 @@ const getDisplayRemarks = async (req, res) => {
   }
 };
 
+// 获取显示屏服务器IP
+const getDisplayServerIP = async (req, res) => {
+  try {
+    const setting = await Setting.findOne({
+      where: { key: 'display_server_ip' }
+    });
+    
+    if (!setting) {
+      return res.json({ value: '' });
+    }
+    
+    res.json({ value: setting.value || '' });
+  } catch (error) {
+    console.error('获取显示屏服务器IP失败:', error);
+    res.status(500).json({ message: '获取显示屏服务器IP失败', error: error.message });
+  }
+};
+
+// 获取语音音量设置（返回换算后的值）
+const getVoiceVolume = async (req, res) => {
+  try {
+    const setting = await Setting.findOne({
+      where: { key: 'voice_volume' }
+    });
+    
+    // 默认值 100，对应 volume = 1.0
+    const rawValue = setting?.value || '100';
+    // 换算公式: volume = voice_volume / 100
+    let volume = parseFloat(rawValue) / 100;
+    
+    // 确保值在有效范围内 (0 到 1)
+    if (isNaN(volume) || volume < 0) volume = 0;
+    if (volume > 1) volume = 1;
+    
+    res.json({ value: volume });
+  } catch (error) {
+    console.error('获取语音音量失败:', error);
+    res.status(500).json({ message: '获取语音音量失败', error: error.message });
+  }
+};
+
+// 获取语音语速设置（返回换算后的值）
+const getVoiceRate = async (req, res) => {
+  try {
+    const setting = await Setting.findOne({
+      where: { key: 'voice_rate' }
+    });
+    
+    // 默认值 10，对应 rate = 1.0
+    const rawValue = setting?.value || '10';
+    // 换算公式: rate = voice_rate / 10
+    let rate = parseFloat(rawValue) / 10;
+    
+    // 确保值在有效范围内 (0.1 到 10)
+    if (isNaN(rate) || rate < 0.1) rate = 0.1;
+    if (rate > 10) rate = 10;
+    
+    res.json({ value: rate });
+  } catch (error) {
+    console.error('获取语音语速失败:', error);
+    res.status(500).json({ message: '获取语音语速失败', error: error.message });
+  }
+};
+
+// 获取取票页面背景图片路径
+const getTicketBannerImage = async (req, res) => {
+  try {
+    const setting = await Setting.findOne({
+      where: { key: 'ticket_banner_image' }
+    });
+    
+    // 默认值
+    const defaultPath = '/pic/ticket_bg.jpg';
+    const imagePath = setting?.value || defaultPath;
+    
+    res.json({ value: imagePath });
+  } catch (error) {
+    console.error('获取取票页面背景图片路径失败:', error);
+    res.status(500).json({ message: '获取取票页面背景图片路径失败', error: error.message });
+  }
+};
+
+// 获取显示屏背景图片路径
+const getDisplayBannerImage = async (req, res) => {
+  try {
+    const setting = await Setting.findOne({
+      where: { key: 'display_banner_image' }
+    });
+    
+    // 默认值
+    const defaultPath = '/pic/display_bg.png';
+    const imagePath = setting?.value || defaultPath;
+    
+    res.json({ value: imagePath });
+  } catch (error) {
+    console.error('获取显示屏背景图片路径失败:', error);
+    res.status(500).json({ message: '获取显示屏背景图片路径失败', error: error.message });
+  }
+};
+
 module.exports = {
   getAllBusinessTypes,
   createBusinessType,
   updateBusinessType,
   getBusinessTypesWithLatestTickets,
-  getDisplayRemarks
+  getDisplayRemarks,
+  getDisplayServerIP,
+  getVoiceVolume,
+  getVoiceRate,
+  getTicketBannerImage,
+  getDisplayBannerImage
 };

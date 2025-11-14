@@ -22,12 +22,21 @@ async function initAdminSettings() {
     }
 
     // 检查并创建其他系统设置项
-    // 只保留票号重置时间设置
     const settingsToCreate = [
       {
         key: 'ticket_reset_time',
         value: '00:00',
         description: '每日票号重置时间 (24小时制, 例如: 00:00)'
+      },
+      {
+        key: 'ticket_banner_image',
+        value: '/pic/ticket_bg.jpg',
+        description: '取票页面背景图片路径 (例如: /pic/ticket_bg.jpg)'
+      },
+      {
+        key: 'display_banner_image',
+        value: '/pic/display_bg.png',
+        description: '显示屏背景图片路径 (例如: /pic/display_bg.png)'
       }
     ];
 

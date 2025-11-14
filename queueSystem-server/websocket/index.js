@@ -52,6 +52,17 @@ function initSocketIO(server) {
       io.emit('ticket:called', { ticketNumber, counterNumber });
     });
     
+    // 语音播报事件
+    socket.on('voice:announce', (data) => {
+      const { ticketNumber, counterNumber, action } = data;
+      // 广播给所有客户端，由客户端判断是否需要播放
+      io.emit('voice:announce', {
+        ticketNumber,
+        counterNumber,
+        action
+      });
+    });
+    
     socket.on('disconnect', () => {
       console.log('客户端断开连接:', socket.id);
     });

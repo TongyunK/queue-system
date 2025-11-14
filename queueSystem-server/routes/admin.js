@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const Database = require('better-sqlite3');
+const { getDatabasePath } = require('../utils/getDatabasePath');
 
 // 管理界面根路径
 router.get('/', (req, res) => {
@@ -152,7 +153,7 @@ router.get('/html', (req, res) => {
 // 获取所有表名
 router.get('/tables', (req, res) => {
   try {
-    const dbPath = path.join(__dirname, '../database.sqlite');
+    const dbPath = getDatabasePath();
     const db = new Database(dbPath, { readonly: true });
     
     const tables = db.prepare(`
@@ -172,7 +173,7 @@ router.get('/tables', (req, res) => {
 router.get('/tables/:tableName/schema', (req, res) => {
   try {
     const { tableName } = req.params;
-    const dbPath = path.join(__dirname, '../database.sqlite');
+    const dbPath = getDatabasePath();
     const db = new Database(dbPath, { readonly: true });
     
     const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
@@ -192,7 +193,7 @@ router.get('/tables/:tableName/data', (req, res) => {
     const { page = 1, limit = 100 } = req.query;
     const offset = (page - 1) * limit;
     
-    const dbPath = path.join(__dirname, '../database.sqlite');
+    const dbPath = getDatabasePath();
     const db = new Database(dbPath, { readonly: true });
     
     const data = db.prepare(`SELECT * FROM ${tableName} LIMIT ? OFFSET ?`).all(limit, offset);
@@ -221,7 +222,7 @@ router.post('/query', express.json(), (req, res) => {
       return res.status(400).json({ error: '必须提供SQL查询' });
     }
     
-    const dbPath = path.join(__dirname, '../database.sqlite');
+    const dbPath = getDatabasePath();
     const db = new Database(dbPath);
     
     let result;

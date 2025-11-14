@@ -10,7 +10,12 @@ const api = axios.create({
 export const businessTypeService = {
   getAll: () => api.get('/business-types'),
   getDisplayData: () => api.get('/business-types/display'),
-  getDisplayRemarks: () => api.get('/business-types/display-remarks')
+  getDisplayRemarks: () => api.get('/business-types/display-remarks'),
+  getDisplayServerIP: () => api.get('/business-types/display-server-ip'),
+  getVoiceVolume: () => api.get('/business-types/voice-volume'),
+  getVoiceRate: () => api.get('/business-types/voice-rate'),
+  getTicketBannerImage: () => api.get('/business-types/ticket-banner-image'),
+  getDisplayBannerImage: () => api.get('/business-types/display-banner-image')
 };
 
 // 票号服务

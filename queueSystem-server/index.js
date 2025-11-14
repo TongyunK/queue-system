@@ -1,10 +1,12 @@
 const app = require('./app');
 const http = require('http');
+const os = require('os');
 const { initSocketIO } = require('./websocket');
 const { sequelize } = require('./models');
 const { seedDatabase } = require('./utils/seeder');
 const { initAdminSettings } = require('./utils/initAdminSettings');
 const dailyResetScheduler = require('./utils/dailyResetScheduler');
+const { addDatabaseIndexes } = require('./utils/addDatabaseIndexes');
 
 const PORT = process.env.PORT || 3000; // 修改为3001或其他未被占用的端口
 const server = http.createServer(app);
@@ -19,7 +21,17 @@ async function initDatabase() {
     // await sequelize.sync({ force: true });
     
     // 使用 alter: true 可以安全地更新表结构而不删除数据
-    await sequelize.sync({ alter: false });
+    // 注意：在生产环境中，建议使用 alter: false 并手动管理数据库迁移
+    await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
+    
+    // 添加性能优化所需的数据库索引
+    // 注意：索引添加失败不会影响程序运行，只是查询性能可能稍慢
+    try {
+      await addDatabaseIndexes();
+    } catch (error) {
+      // 索引添加失败不影响程序启动，只记录警告
+      console.warn('数据库索引添加失败（不影响程序运行）:', error.message);
+    }
     
     // 如果是开发环境，填充初始数据
     if (process.env.NODE_ENV !== 'production') {
@@ -37,22 +49,113 @@ async function initDatabase() {
 
 // 启动服务器
 async function startServer() {
-  await initDatabase();
-  
-  // 启动每日重置定时任务
   try {
-    await dailyResetScheduler.start();
-    // 输出定时任务状态
-    const status = dailyResetScheduler.getStatus();
-    console.log('定时任务状态:', JSON.stringify(status, null, 2));
+    await initDatabase();
+    
+    // 启动每日重置定时任务
+    try {
+      await dailyResetScheduler.start();
+      // 输出定时任务状态
+      const status = dailyResetScheduler.getStatus();
+      console.log('定时任务状态:', JSON.stringify(status, null, 2));
+    } catch (error) {
+      console.error('启动定时任务失败:', error);
+      console.error('错误堆栈:', error.stack);
+      // 定时任务失败不影响服务器启动，继续执行
+    }
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log('\n========================================');
+      console.log('服务器启动成功！');
+      console.log('========================================');
+      console.log(`本地访问地址:`);
+      console.log(`  http://localhost:${PORT}`);
+      console.log(`  http://127.0.0.1:${PORT}`);
+      console.log(`\n网络访问地址:`);
+      
+      // 获取所有网络接口的IP地址
+      const networkInterfaces = os.networkInterfaces();
+      const addresses = [];
+      
+      Object.keys(networkInterfaces).forEach((interfaceName) => {
+        networkInterfaces[interfaceName].forEach((iface) => {
+          // 只显示 IPv4 地址，排除内部地址
+          if (iface.family === 'IPv4' && !iface.internal) {
+            addresses.push(iface.address);
+          }
+        });
+      });
+      
+      if (addresses.length > 0) {
+        addresses.forEach((ip) => {
+          console.log(`  http://${ip}:${PORT}`);
+        });
+      } else {
+        console.log(`  (未检测到网络接口，请检查网络配置)`);
+      }
+      
+      console.log(`\n常用页面:`);
+      console.log(`  取票页面: http://localhost:${PORT}/ticket`);
+      console.log(`  显示屏: http://localhost:${PORT}/display`);
+      console.log(`  叫号机: http://localhost:${PORT}/counter`);
+      console.log(`  管理员: http://localhost:${PORT}/admin`);
+      console.log(`\n提示: 从其他设备访问时，请使用网络访问地址（包含端口号）`);
+      console.log(`例如: http://${addresses[0] || 'YOUR_IP'}:${PORT}/display`);
+      console.log('========================================\n');
+      console.log('按 Ctrl+C 停止服务器\n');
+    });
+    
+    // 处理服务器监听错误
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`❌ 错误: 端口 ${PORT} 已被占用`);
+        console.error('   解决方法:');
+        console.error(`   1. 关闭占用端口 ${PORT} 的程序`);
+        console.error(`   2. 或使用环境变量设置其他端口: set PORT=8080`);
+      } else {
+        console.error('❌ 服务器启动失败:', error);
+        console.error('错误详情:', error.message);
+        console.error('错误堆栈:', error.stack);
+      }
+      process.exit(1);
+    });
+    
   } catch (error) {
-    console.error('启动定时任务失败:', error);
+    console.error('❌ 启动服务器时发生严重错误:');
+    console.error('错误信息:', error.message);
     console.error('错误堆栈:', error.stack);
+    process.exit(1);
   }
-  
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`服务器运行在 http://0.0.0.0:${PORT}`);
-  });
 }
 
-startServer();
+// 处理未捕获的异常
+process.on('uncaughtException', (error) => {
+  console.error('❌ 未捕获的异常:');
+  console.error('错误信息:', error.message);
+  console.error('错误堆栈:', error.stack);
+  // 不要立即退出，给用户时间看到错误信息
+  setTimeout(() => {
+    process.exit(1);
+  }, 5000);
+});
+
+// 处理未处理的 Promise 拒绝
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ 未处理的 Promise 拒绝:');
+  console.error('原因:', reason);
+  if (reason instanceof Error) {
+    console.error('错误堆栈:', reason.stack);
+  }
+  // 不要立即退出，给用户时间看到错误信息
+  setTimeout(() => {
+    process.exit(1);
+  }, 5000);
+});
+
+// 启动服务器
+startServer().catch((error) => {
+  console.error('❌ 启动服务器失败:');
+  console.error('错误信息:', error.message);
+  console.error('错误堆栈:', error.stack);
+  process.exit(1);
+});

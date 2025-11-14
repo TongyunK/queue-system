@@ -78,7 +78,7 @@ const isLoading = ref(false);
 const showErrorDialog = ref(false);
 const errorType = ref('apiError'); // 'apiError' 或 'noSelection'
 const currentView = ref('home'); // 'home' 或 'business-types'
-const bannerImage = ref('https://fastly.picsum.photos/id/26/800/600.jpg?hmac=Gb1_im8FBAsRjmjz4Ggb6JS6Kcib1ZGYSGJNrjW2RmA');
+const bannerImage = ref('/pic/ticket_bg.jpg'); // 默认值，会在 onMounted 中从后端获取
 const businessTypeSelectorRef = ref(null);
 
 // 格式化日期：年月日 星期几(英文)
@@ -117,6 +117,17 @@ onMounted(async () => {
     businessTypes.value = response.data;
   } catch (error) {
     console.error('获取业务类型失败:', error);
+  }
+  
+  // 获取自定义背景图片路径
+  try {
+    const imageResponse = await businessTypeService.getTicketBannerImage();
+    if (imageResponse.data?.value) {
+      bannerImage.value = imageResponse.data.value;
+    }
+  } catch (error) {
+    console.error('获取取票页面背景图片路径失败:', error);
+    // 使用默认值，不阻止页面加载
   }
   
   // 启动时间更新定时器，每秒更新一次

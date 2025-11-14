@@ -89,6 +89,11 @@ router.get('/', (req, res) => {
 router.get('/business-types', businessTypeController.getAllBusinessTypes);
 router.get('/business-types/display', businessTypeController.getBusinessTypesWithLatestTickets);
 router.get('/business-types/display-remarks', businessTypeController.getDisplayRemarks);
+router.get('/business-types/display-server-ip', businessTypeController.getDisplayServerIP);
+router.get('/business-types/voice-volume', businessTypeController.getVoiceVolume);
+router.get('/business-types/voice-rate', businessTypeController.getVoiceRate);
+router.get('/business-types/ticket-banner-image', businessTypeController.getTicketBannerImage);
+router.get('/business-types/display-banner-image', businessTypeController.getDisplayBannerImage);
 router.post('/business-types', businessTypeController.createBusinessType);
 router.put('/business-types/:id', businessTypeController.updateBusinessType);
 

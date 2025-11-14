@@ -8,14 +8,22 @@
     "dev:server": "cd queueSystem-server && npm run dev",
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "build": "node build-scripts/build.js",
+    "build:win": "node build-scripts/build.js --target=win-x64 --node=node18",
+    "build:linux": "node build-scripts/build.js --target=linux-x64 --node=node18",
+    "build:mac": "node build-scripts/build.js --target=macos-x64 --node=node18",
+    "build:mac-arm": "node build-scripts/build.js --target=macos-arm64 --node=node18",
     "deploy": "npm run build && deploy.bat",
     "start": "cd queueSystem-server && npm start"
   },
-  "keywords": ["queue", "system"],
+  "keywords": [
+    "queue",
+    "system"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "concurrently": "^8.0.0"
+    "concurrently": "^8.0.0",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "pkg": "^5.8.0"

@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const { settings: Setting, counters: Counter, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const dailyResetScheduler = require('../utils/dailyResetScheduler');
+const { getIO } = require('../websocket');
 
 // 管理员登录验证
 const login = async (req, res) => {
@@ -88,6 +89,20 @@ const updateSetting = async (req, res) => {
         console.log('检测到 ticket_reset_time 设置已更改，定时任务已重新启动');
       } catch (error) {
         console.error('重启定时任务失败:', error);
+        // 不阻止设置更新，只记录错误
+      }
+    }
+    
+    // 如果更新的是 voice_volume 或 voice_rate，通过 WebSocket 通知所有客户端刷新设置
+    if ((key === 'voice_volume' || key === 'voice_rate') && value !== undefined) {
+      try {
+        const io = getIO();
+        if (io) {
+          io.emit('voice:settingsUpdated', { key });
+          console.log(`检测到 ${key} 设置已更改，已通知所有客户端刷新`);
+        }
+      } catch (error) {
+        console.error('发送语音设置更新通知失败:', error);
         // 不阻止设置更新，只记录错误
       }
     }

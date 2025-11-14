@@ -4,12 +4,41 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "backup-db": "node scripts/backup-database.js",
+    "add-indexes": "node scripts/add-indexes-production.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
+  "pkg": {
+    "assets": [
+      "public",
+      "public/**/*",
+      "public/index.html",
+      "public/assets",
+      "public/assets/**/*",
+      "generated-models-auto",
+      "models",
+      "database.sqlite",
+      "node_modules/sqlite3",
+      "node_modules/sqlite3/build/Release/node_sqlite3.node"
+    ],
+    "scripts": [
+      "controllers/**/*.js",
+      "routes/**/*.js",
+      "services/**/*.js",
+      "utils/**/*.js",
+      "websocket/**/*.js",
+      "node_modules/sequelize/**/*.js",
+      "node_modules/sqlite3/**/*.js"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.4.1",

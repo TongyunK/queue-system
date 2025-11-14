@@ -38,6 +38,12 @@ module.exports = function(sequelize, DataTypes) {
           { name: "counter_number" },
         ]
       },
+      {
+        name: "idx_counters_ip_address",
+        fields: [
+          { name: "ip_address" },
+        ]
+      }
     ]
   });
 };

@@ -195,6 +195,12 @@ const showToast = ref(false); // 控制 toast 显示
 const toastMessage = ref({ chinese: '', english: '' }); // toast 消息内容
 let toastTimer = null; // toast 定时器
 
+// 定时器引用，用于清理
+let waitingCountsInterval = null;
+let currentTicketInterval = null;
+let lastServiceInterval = null;
+let dateTimeInterval = null;
+
 // 日期和时间格式化后的字符串
 const dateTimeFormatted = ref('');
 
@@ -224,7 +230,7 @@ const updateDateTime = () => {
 
 // 初始化时间并设置定时器每秒更新
 updateDateTime();
-setInterval(updateDateTime, 1000);
+dateTimeInterval = setInterval(updateDateTime, 1000);
 
 // 移除状态文本映射
 
@@ -459,13 +465,13 @@ onMounted(async () => {
     await fetchLastServiceNumbers();
     
     // 定期刷新等待人数（每10秒）
-    setInterval(fetchWaitingCounts, 10000);
+    waitingCountsInterval = setInterval(fetchWaitingCounts, 10000);
     
     // 定期刷新当前票号（每5秒）
-    setInterval(fetchCurrentTicketNumber, 5000);
+    currentTicketInterval = setInterval(fetchCurrentTicketNumber, 5000);
     
     // 定期刷新上一个服务号（每10秒）
-    setInterval(fetchLastServiceNumbers, 10000);
+    lastServiceInterval = setInterval(fetchLastServiceNumbers, 10000);
     
     // 获取窗口信息（实际应用中可能需要登录或其他方式获取）
     // 这里简化处理
@@ -501,12 +507,34 @@ onMounted(async () => {
   });
 });
 
-// 组件卸载时清理定时器
+// 组件卸载时清理定时器和事件监听器
 onUnmounted(() => {
+  // 清理所有定时器
+  if (waitingCountsInterval) {
+    clearInterval(waitingCountsInterval);
+    waitingCountsInterval = null;
+  }
+  if (currentTicketInterval) {
+    clearInterval(currentTicketInterval);
+    currentTicketInterval = null;
+  }
+  if (lastServiceInterval) {
+    clearInterval(lastServiceInterval);
+    lastServiceInterval = null;
+  }
+  if (dateTimeInterval) {
+    clearInterval(dateTimeInterval);
+    dateTimeInterval = null;
+  }
   if (toastTimer) {
     clearTimeout(toastTimer);
     toastTimer = null;
   }
+  
+  // 清理socket事件监听器
+  socket.off('ticket:created');
+  socket.off('ticket:statusUpdated');
+  socket.off('ticket:nextCalled');
 });
 
 const selectBusinessType = (type) => {
@@ -567,6 +595,16 @@ const callNext = async () => {
       fetchLastServiceNumbers()    // 刷新上一个服务号
     ]);
     
+    // 发送语音播报事件（使用刷新后的最新票号）
+    const ticketNumber = currentTicketNumber.value || inputDisplay.value || '';
+    if (ticketNumber && ticketNumber !== 'Input') {
+      socket.emit('voice:announce', {
+        ticketNumber: ticketNumber,
+        counterNumber: counterNumber.value,
+        action: 'next'
+      });
+    }
+    
     // 取消业务类型选中
     currentBusinessType.value = null;
     
@@ -600,6 +638,16 @@ const recallTicket = () => {
       counterNumber: counterNumber.value || 1
     });
     
+    // 发送语音播报事件
+    const ticketNumber = inputDisplay.value || currentTicketNumber.value || '';
+    if (ticketNumber && ticketNumber !== 'Input' && counterNumber.value) {
+      socket.emit('voice:announce', {
+        ticketNumber: ticketNumber,
+        counterNumber: counterNumber.value,
+        action: 'recall'
+      });
+    }
+    
     // 显示成功提示
     showToastMessage('重新叫號成功', 'Recall successful');
   } catch (error) {
@@ -616,11 +664,18 @@ const startService = () => {
     isServiceStarted.value = true;
     console.log('开始服务，输入的服务号:', inputDisplay.value);
     
+    // 发送语音播报事件
+    const ticketNumber = inputDisplay.value || '';
+    if (ticketNumber && ticketNumber !== 'Input' && counterNumber.value) {
+      socket.emit('voice:announce', {
+        ticketNumber: ticketNumber,
+        counterNumber: counterNumber.value,
+        action: 'start'
+      });
+    }
+    
     // 显示成功提示
     showToastMessage('服務已開始', 'Service started');
-    
-    // 这里可以添加语音播报或其他逻辑
-    // 稍后实现传递信号进行语音播报
   } catch (error) {
     console.error('开始服务失败:', error);
   }
