@@ -21,6 +21,10 @@ const routes = [
     component: () => import('../views/counter/CounterView.vue')
   },
   {
+    path: '/admin',
+    redirect: '/admin/login'
+  },
+  {
     path: '/admin/login',
     name: 'adminLogin',
     component: () => import('../views/admin/AdminLoginView.vue')
